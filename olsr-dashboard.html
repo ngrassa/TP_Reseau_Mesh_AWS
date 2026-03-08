@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TP Mesh OLSR — Analyse de Convergence</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  --node1: #FF6B35; --node2: #004E89; --node3: #E63946; --node4: #2A9D8F; --node5: #9B5DE5;
+  --bg: #0F1419; --card: #1A2332; --card-border: #2A3A4E; --text: #E8EDF2; --text-muted: #8899AA;
+  --accent: #00D4FF; --grid: #1E2D3D; --success: #00E676; --warning: #FFD600; --danger: #FF5252;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: 'Space Grotesk', sans-serif; padding: 24px 20px; min-height: 100vh; }
+.mono { font-family: 'JetBrains Mono', monospace; }
+
+/* Header */
+.header { text-align: center; margin-bottom: 24px; }
+.header .badge { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.header .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--success); box-shadow: 0 0 12px var(--success); animation: pulse 2s infinite; }
+.header .label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; }
+.header h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 4px; }
+.header h1 span { color: var(--accent); }
+.header .sub { color: var(--text-muted); font-size: 12px; }
+
+/* Stats row */
+.stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+.stat-box { background: var(--card); border: 1px solid var(--card-border); border-radius: 10px; text-align: center; padding: 12px 8px; }
+.stat-val { font-size: 28px; font-weight: 800; line-height: 1; }
+.stat-val span { font-size: 14px; font-weight: 400; color: var(--text-muted); }
+.stat-label { font-size: 10px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* Tabs */
+.tabs { display: flex; gap: 4px; margin-bottom: 20px; background: var(--card); border-radius: 10px; padding: 4px; border: 1px solid var(--card-border); }
+.tab { flex: 1; padding: 10px 16px; border-radius: 8px; border: none; cursor: pointer; background: transparent; color: var(--text-muted); font-weight: 500; font-size: 13px; font-family: 'Space Grotesk', sans-serif; transition: all 0.2s; }
+.tab.active { background: var(--accent); color: var(--bg); font-weight: 700; }
+.tab:hover:not(.active) { background: rgba(0,212,255,0.1); }
+
+/* Grid */
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.span-2 { grid-column: span 2; }
+
+/* Cards */
+.card { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; position: relative; overflow: hidden; }
+.card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--accent), var(--node5)); }
+.card h3 { font-size: 15px; font-weight: 700; margin-bottom: 2px; letter-spacing: -0.02em; }
+.card .subtitle { color: var(--text-muted); font-size: 11px; margin-bottom: 16px; }
+.card canvas { width: 100% !important; }
+
+/* Tab panels */
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* Timeline */
+.timeline { position: relative; padding: 20px 0 20px 20px; }
+.timeline::before { content: ''; position: absolute; left: 14px; top: 20px; bottom: 20px; width: 2px; background: linear-gradient(to bottom, var(--danger), var(--warning), var(--success)); }
+.timeline-item { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px; padding-left: 20px; }
+.timeline-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+.timeline-time { color: var(--accent); font-size: 11px; font-weight: 700; min-width: 50px; }
+.timeline-event { color: var(--text); font-size: 13px; font-weight: 600; }
+.timeline-detail { color: var(--text-muted); font-size: 11px; }
+
+/* Config grid */
+.config-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.config-item { padding: 12px 14px; background: rgba(0,212,255,0.03); border-radius: 8px; border: 1px solid var(--card-border); }
+.config-item .param { color: var(--accent); font-size: 11px; font-weight: 700; }
+.config-item .val { font-size: 20px; font-weight: 800; margin: 4px 0 2px; }
+.config-item .desc { color: var(--text-muted); font-size: 10px; }
+
+/* ETX formula */
+.formula-box { padding: 20px; background: rgba(0,212,255,0.03); border-radius: 10px; border: 1px solid var(--card-border); text-align: center; }
+.formula { font-size: 24px; font-weight: 700; margin-bottom: 12px; }
+.formula-examples { display: flex; justify-content: center; gap: 40px; margin-top: 16px; }
+.formula-examples .label { font-size: 12px; font-weight: 600; }
+.formula-examples .calc { font-size: 18px; font-weight: 700; }
+
+/* Archi list */
+.archi-item { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: rgba(0,212,255,0.02); border-radius: 6px; margin-bottom: 8px; }
+.archi-item .icon { font-size: 16px; }
+.archi-item .lbl { color: var(--text-muted); font-size: 11px; min-width: 80px; }
+.archi-item .val { color: var(--text); font-size: 12px; font-weight: 600; }
+
+/* MPR */
+.mpr-item { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.mpr-dot { width: 8px; height: 8px; border-radius: 50%; }
+.mpr-node { font-size: 12px; font-weight: 600; min-width: 60px; }
+.mpr-info { color: var(--text-muted); font-size: 11px; }
+.mpr-note { margin-top: 12px; padding: 10px 12px; background: rgba(0,212,255,0.05); border-radius: 8px; border: 1px solid rgba(0,212,255,0.15); }
+.mpr-note p { color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+.mpr-note strong { color: var(--accent); }
+
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@media (max-width: 900px) {
+  .grid { grid-template-columns: 1fr; }
+  .span-2 { grid-column: span 1; }
+  .stats-row { grid-template-columns: repeat(3, 1fr); }
+  .config-grid { grid-template-columns: repeat(2, 1fr); }
+  .formula-examples { flex-direction: column; gap: 16px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="badge"><div class="dot"></div><span class="label mono">OLSR Mesh Network Analysis</span></div>
+  <h1>TP Réseau Mesh — <span>Analyse de Convergence</span></h1>
+  <p class="sub mono">Pr Noureddine GRASSA — ISET Sousse — 5 nœuds EC2 · VXLAN · OLSRd</p>
+</div>
+
+<!-- Stats -->
+<div class="stats-row">
+  <div class="stat-box"><div class="stat-val" style="color:var(--accent)">5</div><div class="stat-label mono">Nœuds Mesh</div></div>
+  <div class="stat-box"><div class="stat-val" style="color:var(--warning)">~25<span>s</span></div><div class="stat-label mono">Convergence</div></div>
+  <div class="stat-box"><div class="stat-val" style="color:var(--node5)">183</div><div class="stat-label mono">Paquets Capturés</div></div>
+  <div class="stat-box"><div class="stat-val" style="color:var(--success)">2<span>s</span></div><div class="stat-label mono">Hello Interval</div></div>
+  <div class="stat-box"><div class="stat-val" style="color:var(--node1)">1.0</div><div class="stat-label mono">ETX Final</div></div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <button class="tab active" onclick="switchTab(0)">Convergence</button>
+  <button class="tab" onclick="switchTab(1)">Topologie</button>
+  <button class="tab" onclick="switchTab(2)">Messages</button>
+  <button class="tab" onclick="switchTab(3)">Métriques</button>
+</div>
+
+<!-- TAB 0: Convergence -->
+<div class="tab-panel active" id="tab0">
+<div class="grid">
+  <div class="card span-2">
+    <h3>Convergence de Node3 — Link Quality (%)</h3>
+    <p class="subtitle mono">Évolution du LQ vu par chaque nœud après relance de node3</p>
+    <canvas id="chartConvergence" height="170"></canvas>
+  </div>
+  <div class="card">
+    <h3>Asymétrie LQ / NLQ</h3>
+    <p class="subtitle mono">Node3 perçoit ses voisins mieux qu'il n'est perçu</p>
+    <canvas id="chartAsymmetry" height="200"></canvas>
+  </div>
+  <div class="card">
+    <h3>Phases de Convergence</h3>
+    <p class="subtitle mono">Temps par phase après relance de node3</p>
+    <canvas id="chartPhases" height="200"></canvas>
+  </div>
+</div>
+</div>
+
+<!-- TAB 1: Topologie -->
+<div class="tab-panel" id="tab1">
+<div class="grid">
+  <div class="card span-2">
+    <h3>Qualité des Liens (ETX)</h3>
+    <p class="subtitle mono">ETX moyen pendant la convergence — liens stables vs node3</p>
+    <canvas id="chartETX" height="150"></canvas>
+  </div>
+  <div class="card">
+    <h3>Radar — Santé des Nœuds (état final)</h3>
+    <p class="subtitle mono">LQ, NLQ, ETX, Voisins, 2-hop — score normalisé 0-100</p>
+    <canvas id="chartRadar" height="220"></canvas>
+  </div>
+  <div class="card">
+    <h3>Sélection des MPR</h3>
+    <p class="subtitle mono">Nœuds élus Multipoint Relay pendant la convergence</p>
+    <div style="padding-top:8px">
+      <div class="mpr-item"><div class="mpr-dot" style="background:var(--node1);box-shadow:0 0 8px var(--node1)"></div><span class="mpr-node mono">Node 1</span><span class="mpr-info mono">→ MPR: Node 2, Node 5</span></div>
+      <div class="mpr-item"><div class="mpr-dot" style="background:var(--node2);box-shadow:0 0 8px var(--node2)"></div><span class="mpr-node mono">Node 2</span><span class="mpr-info mono">→ MPR: Node 1, Node 5</span></div>
+      <div class="mpr-item"><div class="mpr-dot" style="background:var(--node4);box-shadow:0 0 8px var(--node4)"></div><span class="mpr-node mono">Node 4</span><span class="mpr-info mono">→ MPR: Node 1, Node 5</span></div>
+      <div class="mpr-item"><div class="mpr-dot" style="background:var(--node5);box-shadow:0 0 8px var(--node5)"></div><span class="mpr-node mono">Node 5</span><span class="mpr-info mono">→ MPR pour tous</span></div>
+      <div class="mpr-note"><p class="mono"><strong>Note :</strong> Node3 n'est élu MPR par aucun voisin pendant la convergence (LQ trop faible). Node5 et Node1 sont les MPR principaux.</p></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- TAB 2: Messages -->
+<div class="tab-panel" id="tab2">
+<div class="grid">
+  <div class="card">
+    <h3>Distribution des Messages OLSR</h3>
+    <p class="subtitle mono">Répartition sur 183 paquets capturés</p>
+    <canvas id="chartPie" height="220"></canvas>
+  </div>
+  <div class="card">
+    <h3>Trafic OLSR par Nœud</h3>
+    <p class="subtitle mono">Nombre de messages HELLO et TC émis</p>
+    <canvas id="chartTraffic" height="220"></canvas>
+  </div>
+  <div class="card span-2">
+    <h3>Chronologie des Événements</h3>
+    <p class="subtitle mono">Timeline de la convergence</p>
+    <div class="timeline">
+      <div class="timeline-item"><div class="timeline-dot" style="background:var(--danger);box-shadow:0 0 8px var(--danger)"></div><div><div><span class="timeline-time mono">t=0s</span> <span class="timeline-event">Node3 relancé — premier HELLO émis</span></div><span class="timeline-detail mono">LQ = 0%, aucun voisin détecté</span></div></div>
+      <div class="timeline-item"><div class="timeline-dot" style="background:var(--danger);box-shadow:0 0 8px var(--danger)"></div><div><div><span class="timeline-time mono">t+2s</span> <span class="timeline-event">Premiers HELLO reçus par les voisins</span></div><span class="timeline-detail mono">LQ ≈ 20-24%, lien asymétrique</span></div></div>
+      <div class="timeline-item"><div class="timeline-dot" style="background:var(--warning);box-shadow:0 0 8px var(--warning)"></div><div><div><span class="timeline-time mono">t+6s</span> <span class="timeline-event">Lien symétrique établi (SYM=YES)</span></div><span class="timeline-detail mono">LQ ≈ 34%, node3 dans les tables de voisinage</span></div></div>
+      <div class="timeline-item"><div class="timeline-dot" style="background:var(--warning);box-shadow:0 0 8px var(--warning)"></div><div><div><span class="timeline-time mono">t+10s</span> <span class="timeline-event">Premiers TC émis par node3</span></div><span class="timeline-detail mono">LQ ≈ 39%, topologie se propage</span></div></div>
+      <div class="timeline-item"><div class="timeline-dot" style="background:var(--warning);box-shadow:0 0 8px var(--warning)"></div><div><div><span class="timeline-time mono">t+15s</span> <span class="timeline-event">ETX calculable — route ajoutée</span></div><span class="timeline-detail mono">LQ ≈ 48%, route via node3 disponible</span></div></div>
+      <div class="timeline-item"><div class="timeline-dot" style="background:var(--success);box-shadow:0 0 8px var(--success)"></div><div><div><span class="timeline-time mono">t+20s</span> <span class="timeline-event">LQ en forte progression</span></div><span class="timeline-detail mono">LQ ≈ 55-64%, convergence rapide</span></div></div>
+      <div class="timeline-item"><div class="timeline-dot" style="background:var(--success);box-shadow:0 0 8px var(--success)"></div><div><div><span class="timeline-time mono">t+25s</span> <span class="timeline-event">Convergence quasi-complète</span></div><span class="timeline-detail mono">LQ ≈ 85%, ETX ≈ 1.17 — réseau stabilisé</span></div></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- TAB 3: Métriques -->
+<div class="tab-panel" id="tab3">
+<div class="grid">
+  <div class="card span-2">
+    <h3>Paramètres OLSR Configurés</h3>
+    <p class="subtitle mono">Configuration OLSRd utilisée pour le TP</p>
+    <div class="config-grid">
+      <div class="config-item"><div class="param mono">HelloInterval</div><div class="val">2.0s</div><div class="desc mono">Fréquence des HELLO</div></div>
+      <div class="config-item"><div class="param mono">HelloValidityTime</div><div class="val">6.0s</div><div class="desc mono">Durée de validité HELLO</div></div>
+      <div class="config-item"><div class="param mono">TcInterval</div><div class="val">5.0s</div><div class="desc mono">Fréquence des TC</div></div>
+      <div class="config-item"><div class="param mono">TcValidityTime</div><div class="val">15.0s</div><div class="desc mono">Durée de validité TC</div></div>
+      <div class="config-item"><div class="param mono">LinkQualityLevel</div><div class="val">2</div><div class="desc mono">ETX activé (bidirectionnel)</div></div>
+      <div class="config-item"><div class="param mono">LQ Algorithm</div><div class="val">etx_ff</div><div class="desc mono">ETX Freifunk (fenêtre glissante)</div></div>
+      <div class="config-item"><div class="param mono">UseHysteresis</div><div class="val">no</div><div class="desc mono">Désactivé (incompatible LQ)</div></div>
+      <div class="config-item"><div class="param mono">Willingness</div><div class="val">3</div><div class="desc mono">Niveau moyen (défaut)</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Formule ETX</h3>
+    <p class="subtitle mono">Expected Transmission Count — métrique de qualité</p>
+    <div class="formula-box">
+      <div class="formula mono">ETX = 1 / (LQ × NLQ)</div>
+      <div class="formula-examples">
+        <div><div class="label" style="color:var(--accent)">Lien parfait</div><div class="calc mono">1/(1×1) = <span style="color:var(--success)">1.0</span></div></div>
+        <div><div class="label" style="color:var(--warning)">Node3 à t+10s</div><div class="calc mono">1/(0.39×0.37) = <span style="color:var(--warning)">6.93</span></div></div>
+        <div><div class="label" style="color:var(--node3)">Node3 à t+25s</div><div class="calc mono">1/(0.85×0.85) = <span style="color:var(--success)">1.38</span></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Architecture du TP</h3>
+    <p class="subtitle mono">Infrastructure AWS déployée</p>
+    <div style="padding-top:8px">
+      <div class="archi-item"><span class="icon">☁️</span><span class="lbl mono">Cloud</span><span class="val mono">AWS EC2 (us-east-1)</span></div>
+      <div class="archi-item"><span class="icon">🖥️</span><span class="lbl mono">Instances</span><span class="val mono">5 × t2.micro (Ubuntu 22.04)</span></div>
+      <div class="archi-item"><span class="icon">🔗</span><span class="lbl mono">Overlay</span><span class="val mono">VXLAN (VNI 42, port 4789)</span></div>
+      <div class="archi-item"><span class="icon">🌐</span><span class="lbl mono">Mesh IPs</span><span class="val mono">192.168.100.11-15 /24</span></div>
+      <div class="archi-item"><span class="icon">📡</span><span class="lbl mono">Routage</span><span class="val mono">OLSRd pre-0.9.9 (compilé)</span></div>
+      <div class="archi-item"><span class="icon">📊</span><span class="lbl mono">Monitoring</span><span class="val mono">txtinfo plugin (port 2006)</span></div>
+      <div class="archi-item"><span class="icon">⚙️</span><span class="lbl mono">IaC</span><span class="val mono">Terraform + AWS Provider</span></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+// ── Tab switching ──
+function switchTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===n));
+  document.querySelectorAll('.tab-panel').forEach((p,i) => p.classList.toggle('active', i===n));
+  // Lazy init charts
+  if (n===0 && !window._c0) initTab0();
+  if (n===1 && !window._c1) initTab1();
+  if (n===2 && !window._c2) initTab2();
+}
+
+Chart.defaults.color = '#8899AA';
+Chart.defaults.borderColor = '#1E2D3D';
+Chart.defaults.font.family = "'JetBrains Mono', monospace";
+Chart.defaults.font.size = 11;
+
+// ── TAB 0: Convergence ──
+function initTab0() {
+  window._c0 = true;
+  const labels = ["12:55:29","12:55:31","12:55:33","12:55:35","12:55:37","12:55:39","12:55:41","12:55:43","12:55:45","12:55:47","12:55:49","12:55:51","12:55:53","12:55:54"];
+  
+  new Chart(document.getElementById('chartConvergence'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Node3 (LQ propre)', data: [20.78,28.24,31.37,34.51,37.25,39.61,41.96,44.31,48.24,49.80,55.29,72.55,84.71,84.71], borderColor: '#E63946', backgroundColor: 'rgba(230,57,70,0.15)', fill: true, borderWidth: 3, tension: 0.3, pointRadius: 4 },
+        { label: 'Vu par Node1', data: [null,24.71,28.24,31.37,34.51,37.25,41.96,46.27,46.27,46.27,63.92,73.73,73.73,null], borderColor: '#FF6B35', borderWidth: 2, tension: 0.3, pointRadius: 3, spanGaps: true },
+        { label: 'Vu par Node2', data: [20.78,24.71,28.24,31.37,34.51,39.61,39.61,44.31,48.24,48.24,56.86,73.73,73.73,null], borderColor: '#004E89', borderWidth: 2, tension: 0.3, pointRadius: 3, spanGaps: true },
+        { label: 'Vu par Node4', data: [24.71,24.71,28.24,31.37,34.51,39.61,39.61,44.31,48.24,48.24,55.29,73.73,73.73,85.49], borderColor: '#2A9D8F', borderWidth: 2, tension: 0.3, pointRadius: 3, spanGaps: true },
+        { label: 'Vu par Node5', data: [20.78,28.24,31.37,34.51,37.25,39.61,44.31,48.24,48.24,48.24,56.86,63.92,85.49,null], borderColor: '#9B5DE5', borderWidth: 2, tension: 0.3, pointRadius: 3, spanGaps: true },
+      ]
+    },
+    options: { responsive: true, scales: { y: { min: 0, max: 100, ticks: { callback: v => v+'%' } } }, plugins: { legend: { position: 'bottom' } } }
+  });
+
+  new Chart(document.getElementById('chartAsymmetry'), {
+    type: 'bar',
+    data: {
+      labels: ['t+2s','t+6s','t+10s','t+14s','t+18s','t+22s','t+25s'],
+      datasets: [
+        { label: 'Node3 → voisins (LQ)', data: [28.24,34.51,39.61,44.31,49.80,84.71,84.71], backgroundColor: '#E63946', borderRadius: 4 },
+        { label: 'Voisins → Node3 (NLQ)', data: [24.71,31.37,37.25,41.96,48.24,73.73,85.49], backgroundColor: '#004E89', borderRadius: 4 },
+      ]
+    },
+    options: { responsive: true, scales: { y: { min: 0, max: 100, ticks: { callback: v => v+'%' } } }, plugins: { legend: { position: 'bottom' } } }
+  });
+
+  new Chart(document.getElementById('chartPhases'), {
+    type: 'bar',
+    data: {
+      labels: ['Détection (HELLO)', 'Échange (LQ build)', 'Stabilisation (ETX→1.0)'],
+      datasets: [{ label: 'Durée (s)', data: [6, 12, 7], backgroundColor: ['#FF5252','#FFD600','#00E676'], borderRadius: 6 }]
+    },
+    options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { callback: v => v+'s' } } } }
+  });
+}
+
+// ── TAB 1: Topologie ──
+function initTab1() {
+  window._c1 = true;
+  const etxLabels = ['N1↔N2','N1↔N4','N1↔N5','N2↔N4','N2↔N5','N4↔N5','N1↔N3','N2↔N3','N4↔N3','N5↔N3'];
+  const etxData = [1,1,1,1,1,1,2.39,2.53,2.39,2.18];
+  const etxColors = etxData.map(v => v===1 ? '#00E676' : '#FFD600');
+
+  new Chart(document.getElementById('chartETX'), {
+    type: 'bar',
+    data: { labels: etxLabels, datasets: [{ label: 'ETX', data: etxData, backgroundColor: etxColors, borderRadius: 6 }] },
+    options: { responsive: true, scales: { y: { min: 0, max: 3 } }, plugins: { legend: { display: false } } }
+  });
+
+  new Chart(document.getElementById('chartRadar'), {
+    type: 'radar',
+    data: {
+      labels: ['LQ','NLQ','ETX','Voisins','2-hop'],
+      datasets: [
+        { label: 'Node1', data: [100,100,100,100,100], borderColor: '#FF6B35', backgroundColor: 'rgba(255,107,53,0.1)', borderWidth: 2 },
+        { label: 'Node3', data: [85,85,72,100,100], borderColor: '#E63946', backgroundColor: 'rgba(230,57,70,0.15)', borderWidth: 2, borderDash: [5,5] },
+        { label: 'Node5', data: [100,100,100,100,100], borderColor: '#9B5DE5', backgroundColor: 'rgba(155,93,229,0.1)', borderWidth: 2 },
+      ]
+    },
+    options: { responsive: true, scales: { r: { min: 0, max: 100, ticks: { stepSize: 25 } } }, plugins: { legend: { position: 'bottom' } } }
+  });
+}
+
+// ── TAB 2: Messages ──
+function initTab2() {
+  window._c2 = true;
+
+  new Chart(document.getElementById('chartPie'), {
+    type: 'doughnut',
+    data: {
+      labels: ['HELLO (65%)','TC (30%)','TC relayé (5%)'],
+      datasets: [{ data: [65,30,5], backgroundColor: ['#00D4FF','#FF6B35','#9B5DE5'], borderColor: '#0F1419', borderWidth: 3 }]
+    },
+    options: { responsive: true, cutout: '55%', plugins: { legend: { position: 'bottom' } } }
+  });
+
+  new Chart(document.getElementById('chartTraffic'), {
+    type: 'bar',
+    data: {
+      labels: ['Node 1','Node 2','Node 3','Node 4','Node 5'],
+      datasets: [
+        { label: 'HELLO', data: [28,26,30,27,25], backgroundColor: '#00D4FF', borderRadius: 4 },
+        { label: 'TC', data: [12,14,16,13,15], backgroundColor: '#FF6B35', borderRadius: 4 },
+      ]
+    },
+    options: { responsive: true, scales: { x: {}, y: {} }, plugins: { legend: { position: 'bottom' } }, barPercentage: 0.7 }
+  });
+}
+
+// Init first tab
+initTab0();
+</script>
+</body>
+</html>
